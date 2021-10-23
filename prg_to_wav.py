@@ -111,7 +111,8 @@ hexstring = hexstringfh.read().hex()
 hexstringfh.close()
 mc_bytes = bytearray.fromhex(hexstring)
 
-
+# generate separate code block and 
+# start address
 code, SA = separate_code_and_start_addres(mc_bytes, is_prg, start_address)
 print("Start address: {}".format(SA))
 # For now just 16 bits (32767 -32768); 
@@ -125,8 +126,6 @@ onelong = 9 * [-1*(2**(bits-1))] + 9 * [2**(bits-1)-1]
 zerobit = 18 * oneshort + 6 * onelong
 onebit = 9 * oneshort + 12 * onelong
 
-ID='01'
-
 # create high and low adress byte
 SAL = SA[2:]
 SAH = SA[:2]
@@ -136,6 +135,7 @@ print("asciicode: ", asciicode)
 
 # check if ID is allowed: should be hex and not include 0 or 0xFF
 check_ID(ID)
+print("ID is: ",ID)
 
 # compute checksum; indeed this is a bit convoluted
 # could have been done directly on the code: 
