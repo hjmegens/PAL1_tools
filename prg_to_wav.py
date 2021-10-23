@@ -2,7 +2,7 @@
 # if general .bin file provide start address
 # python prg_to_wav.py -i VUTAPE.BIN -o vutape.wav -s 0000
 # if commodore style .prg file
-# 
+# python prg_to_wav.py -i first_example_first_book_of_KIM.prg -o first_example_first_book_of_KIM.wav --input_is_prg 
 
 # import libs
 import argparse
