@@ -7,6 +7,10 @@
 # import libs
 import argparse
 
+def write_out(outstring, fh):
+    print(outstring)
+    fh.write(outstring+'\n')
+
 ####################
 # block arguments and parsing
 parser = argparse.ArgumentParser( description='Convert binary PRG to PTP for PAL-1/KIM-1')
@@ -67,8 +71,7 @@ for i in range(numrecords):
     chsum = 0x18 + int(addressstring[:2],16) + int(addressstring[2:],16)
     
     # report the first part of the line
-    print(';18'+addressstring, end = '')
-    out_ptp.write(';18'+addressstring)
+    record = ';18'+addressstring
 
     # get the part of the code for this line
     line = code[i*0x18:i*0x18+0x18]
@@ -80,12 +83,11 @@ for i in range(numrecords):
         chsum += byte
 
         # add the byte, converted to asccii, to the line
-        print('{:02x}'.format(byte).upper(), end = '')
-        out_ptp.write('{:02x}'.format(byte).upper())
+        record += '{:02x}'.format(byte).upper()
 
     # and end the line with the line specific checksum
-    print('{:04x}'.format(chsum).upper())
-    out_ptp.write('{:04x}'.format(chsum).upper()+'\n')
+    record += '{:04x}'.format(chsum).upper()
+    write_out(record, out_ptp)
 
 # when all entire lines done, we are now at this address:
 address = startaddress + numrecords*0x18
@@ -108,33 +110,29 @@ if len(code) % 0x18 > 0:
     chsum = numbyteslastline + int(addressstring[:2],16) + int(addressstring[2:],16)
 
     # again, report first bytes
-    print(';{:02x}'.format(numbyteslastline).upper() + addressstring, end = '')
-    out_ptp.write(';{:02x}'.format(numbyteslastline).upper() + addressstring)
+    record = ';{:02x}'.format(numbyteslastline).upper() + addressstring
 
     # and then every next byte:
     for byte in lastline:
 
         # turn to ascii and print
-        print('{:02x}'.format(byte).upper(), end = '')
-        out_ptp.write('{:02x}'.format(byte).upper())
+        record += '{:02x}'.format(byte).upper()
 
         # and keep score of checksum
         chsum += byte
 
     # report the last line's checksum
-    print('{:04x}'.format(chsum).upper())
-    out_ptp.write('{:04x}'.format(chsum).upper()+'\n')
+    record += '{:04x}'.format(chsum).upper()
+    write_out(record, out_ptp)
     
 # last line of the papertape reports only the number of records
 # zero data bytes
-print(';00', end = '')
-out_ptp.write(';00')
+record = ';00'
 # number of records
-print('{:04x}'.format(totalnumrecords).upper(), end = '')
-out_ptp.write('{:04x}'.format(totalnumrecords).upper())
+record += '{:04x}'.format(totalnumrecords).upper()
 # checksum of the line, should be same as number of records
-print('{:04x}'.format(totalnumrecords).upper())
-out_ptp.write('{:04x}'.format(totalnumrecords).upper()+'\n')
+record += '{:04x}'.format(totalnumrecords).upper()
+write_out(record, out_ptp)
 
 # and let's not forget to close the outfile
 out_ptp.close()
