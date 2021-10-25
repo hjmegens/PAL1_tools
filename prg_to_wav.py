@@ -16,10 +16,10 @@ def compute_chsum(message):
 
     #print(message)
     hexnum = -1
+    print(len(message))
     for i in range(0,len(message),2):
         if message[i] not in hexsymbols:
             print("WARNING: not valid hex symbol")
-
         numchar1 = int('{:08b}'.format(ord(message[i]))[4:],2)
         numchar2 = int('{:08b}'.format(ord(message[i+1]))[4:],2)
         if ord(message[i]) < 0x41:
@@ -73,7 +73,7 @@ def separate_code_and_start_addres(mc_bytes, is_prg, start_address):
         sah = mc_bytes[1]
     elif (not is_prg) and (start_address != 'NA'):
         code = mc_bytes
-        sa = start_address
+        sa = '{:04x}'.format(int(start_address, 16))
     else:
         print("WARNING: no start address can be defined")
         code = mc_bytes
@@ -111,6 +111,7 @@ hexstring = hexstringfh.read().hex()
 hexstringfh.close()
 mc_bytes = bytearray.fromhex(hexstring)
 
+print(len(mc_bytes))
 # generate separate code block and 
 # start address
 code, SA = separate_code_and_start_addres(mc_bytes, is_prg, start_address)

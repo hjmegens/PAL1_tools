@@ -2,6 +2,7 @@
 # python prg_to_ptp.py -i examples_kimtape/first_example_first_book_of_KIM.prg -o first_example_first_book_of_KIM.ptp
 # python prg_to_ptp.py -i examples_kimtape/VUTAPE.BIN -b -s 0 -o vutape.ptp
 # python prg_to_ptp.py -i examples_kimtape/ASTEROID.BIN -b -s 200 -o asteroid.ptp
+# For the PTP format see Appendix F of the KIM manual
 
 # import libs
 import argparse
@@ -124,12 +125,15 @@ if len(code) % 0x18 > 0:
     print('{:04x}'.format(chsum).upper())
     out_ptp.write('{:04x}'.format(chsum).upper()+'\n')
     
-# last lines reports only the number of records
+# last line of the papertape reports only the number of records
+# zero data bytes
 print(';00', end = '')
-print('{:04x}'.format(totalnumrecords).upper(), end = '')
-print('{:04x}'.format(totalnumrecords).upper())
 out_ptp.write(';00')
+# number of records
+print('{:04x}'.format(totalnumrecords).upper(), end = '')
 out_ptp.write('{:04x}'.format(totalnumrecords).upper())
+# checksum of the line, should be same as number of records
+print('{:04x}'.format(totalnumrecords).upper())
 out_ptp.write('{:04x}'.format(totalnumrecords).upper()+'\n')
 
 # and let's not forget to close the outfile
