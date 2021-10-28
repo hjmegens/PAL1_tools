@@ -16,6 +16,18 @@ def plot_specgram(signal_data, sampling_frequency,outfilestub):
     plt.ylabel('Frequency')
     plt.savefig(outfilestub + '_specgram.png')
 
+def plot_fft(sound, sampling_freq, outfilestub):
+    fft_spectrum = np.fft.rfft(sound)
+    freq = np.fft.rfftfreq(sound.size, d=1./sampling_freq)
+    fft_spectrum_abs = np.abs(fft_spectrum)
+    plt.figure(figsize=(16, 5), dpi=300)
+    plt.plot(freq[freq<4500], fft_spectrum_abs[freq<4500])
+    plt.xlabel("frequency, Hz")
+    plt.ylabel("Amplitude, units")
+    plt.ylim(0,1.1*fft_spectrum_abs.max())
+    plt.xlim(1000,4500)
+    plt.savefig(outfilestub + '_fft.png')
+
 def plot_start(starttime,time,sound,outfilestub):
     newvec = (time>starttime) & (time<(starttime+0.05))
     plt.figure(figsize=(16, 5), dpi=300)
@@ -127,6 +139,7 @@ parser.add_argument("-o", "--output", help="output PRG", type = str, default='te
 parser.add_argument("-d", "--debug", help="debug", action="store_true")
 parser.add_argument("-b", "--as_bin", help="output as BIN", action="store_true")
 parser.add_argument("-p", "--as_prg", help="output as PRG", action="store_true")
+parser.add_argument("-s", "--make_plots", help="output plots", action="store_true")
 
 as_bin = False
 as_prg = False
@@ -138,15 +151,22 @@ output_prg = args.output
 debug = args.debug
 as_bin = args.as_bin
 as_prg = args.as_prg
+make_plots = args.make_plots
+
 if as_prg and as_bin:
     print("WARNING! (fatal): you should specify only one type of output format")
     sys.exit()
 # end block args and parsing
 ####################
 
+# convert wav to soundvector and samplerate
 sound,maxsignal,minsignal,time,samplerate = return_data_from_wav(input_file)
-plot_specgram(sound,samplerate,output_prg.split('.')[0])
 
+if make_plots:
+    plot_specgram(sound,samplerate,output_prg.split('.')[0])
+    plot_fft(sound, samplerate, output_prg.split('.')[0])
+
+# initialize a bunch of vars
 count2400 = 0
 count3700 = 0
 newbit = 'no'
@@ -158,9 +178,7 @@ newbyte = ''
 charstring = ''
 allshort = list()
 alllong = list()
-
 lastsignal = 0
-
 triggerup = 0
 triggerdown = 0
 cycledown = 0
@@ -168,8 +186,7 @@ cycleup = -1
 prevhightime = -1
 cycletime = 0
 
-chsum = 0
-
+# go through every timepoint in sound vector
 for i,x in enumerate(sound):
     if x > 0.7*maxsignal or x < 0.7*minsignal:
         
@@ -214,9 +231,10 @@ for i,x in enumerate(sound):
     
         prevhighlowtime = time[i]
 
-
+# finish the last one
 totaltime,bitcounter,newbyte,charstring = add_bit(totaltime,bitcounter,newbyte,charstring)
 
+# print bytes to screen
 transtable = make_transtable()
 
 print('\nbytes in the .wav file:\n----------------------------')
@@ -228,17 +246,12 @@ for i in range(0,len(charstring),20):
     print()
 print('----------------------------')
 
+# get message from bytes
 message = charstring.split('*')[1]
 message = message[2:].split('/')[0]
 
-print("\n\nfirst signal: {:.2f}\nlast signal: {:.2f}".format(firsttime, lasttime))
-
-print("totaltime, estimated from waves: {:.2f}".format(totaltime))
-
-print("short pulses, estmate of hz: {:.2f}".format(np.mean(np.array(allshort))))
-print("long pulses, estmate of hz: {:.2f}".format(np.mean(np.array(alllong))))
+# write binary
 computed_checksum,message_bytearray = compute_chsum(message)
-print('computed checksum: {}'.format(computed_checksum.upper()))
 outbytearrayfh = open(output_prg,'wb')
 
 if as_bin:
@@ -248,4 +261,14 @@ elif as_prg:
 else:
     print("WARNING: no output generated, specify format")
 outbytearrayfh.close()
-plot_start(firsttime,time,sound,output_prg.split('.')[0])
+
+# print out some information
+print("\n\nfirst signal: {:.2f}\nlast signal: {:.2f}".format(firsttime, lasttime))
+
+print("totaltime, estimated from waves: {:.2f}".format(totaltime))
+
+print("short pulses, estmate of hz: {:.2f}".format(np.mean(np.array(allshort))))
+print("long pulses, estmate of hz: {:.2f}".format(np.mean(np.array(alllong))))
+print('computed checksum: {}'.format(computed_checksum.upper()))
+if make_plots:
+   plot_start(firsttime,time,sound,output_prg.split('.')[0])
