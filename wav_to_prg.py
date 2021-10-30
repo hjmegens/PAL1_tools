@@ -230,6 +230,7 @@ cycletime = 0
 syncounter = 0
 allmessages = list()
 goodlock = False
+lastgoodpeak = 0
 
 # go through every timepoint in sound vector
 for i,x in enumerate(sound):
@@ -259,9 +260,10 @@ for i,x in enumerate(sound):
             triggerup = 0
             triggerdown = 0
             hertz = (1/cycletime)
-
             if hertz > 3200 and hertz < 4000 and newbit == 'yes':
-                if count3700 > 2 and count2400 > 1:
+                betweengoodpeaks = lastgoodpeak - cycleup
+                lastgoodpeak = cycleup
+                if count3700 > 2 and count2400 > 1 and betweengoodpeaks < (3*(1/2400)):
                     
                     totaltime,bitcounter, bytecounter,newbyte,charstring,oldbyte = add_bit(totaltime,bitcounter,bytecounter, newbyte,charstring, cycleup)
                     syncounter, bytecounter, bitcounter, newbyte, charstring, goodlock = detect_leader(bytecounter, oldbyte, syncounter, bitcounter, newbyte, charstring, goodlock)
@@ -277,10 +279,11 @@ for i,x in enumerate(sound):
                             plot_start(cycleup,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
                         
   
-                elif count3700 > 3 or count2400 > 2:
-                    print("WARNING: possible mangled/skipped bit at time {:.3f}".format(cycleup))
+                elif (count3700 > 3 or count2400 > 2) or betweengoodpeaks > (3*(1/2400)) :
+                    print("WARNING: possible mangled/skipped bit at time {:.3f} \nor larger gap in message.".format(cycleup))
                     if debug:
-                        plot_start(cycleup-0.025,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup))
+                        title = 'Possible mangled/skipped bit'
+                        plot_start(cycleup-0.025,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
                     if goodlock:
                         allmessages.append(charstring)
                     syncounter, bytecounter, bitcounter, newbyte, charstring,goodlock = 0,0,0,'','',False
@@ -293,9 +296,11 @@ for i,x in enumerate(sound):
                 count3700 += 1
                 allshort.append(hertz)
             elif hertz > 3200 and hertz < 4000:
+                lastgoodpeak = cycleup
                 count3700 += 1
                 allshort.append(hertz)
             elif hertz <= 2600 and hertz >2100:
+                lastgoodpeak = cycleup
                 newbit = 'yes'
                 count2400 += 1
                 alllong.append(hertz)
