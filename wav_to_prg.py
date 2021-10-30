@@ -1,3 +1,6 @@
+# convert a .wav file for KIM-1 to binary or prg
+# very much a work in progres
+
 # import libs
 import sys
 import argparse
@@ -28,18 +31,34 @@ def plot_fft(sound, sampling_freq, outfilestub):
     plt.xlim(1000,4500)
     plt.savefig(outfilestub + '_fft.png')
 
-def plot_start(starttime,time,sound,outfilestub):
+def plot_start(starttime,time,sound,outfilestub,title):
     newvec = (time>starttime) & (time<(starttime+0.05))
     plt.figure(figsize=(16, 5), dpi=300)
     plt.plot(time[newvec], sound[newvec])
+    plt.title(title)
     plt.savefig(outfilestub + '_start_waves.png')
+
+def create_header(width):
+    header = ''
+    for i in range(width):
+        rest = i % 10
+        if rest == 0:
+            header += '|'
+        else:
+            header += '-'
+    header += '|'
+    header = '    \t' + header
+    return header
 
 def returnbit(count2400,count3700):
     kimbit = 0
     time2400 = count2400/2400
     time3700 = count3700/3700
-    if time2400/time3700 > 1.5:
+    if time3700 > 0 and (time2400/time3700 > 1.5):
         kimbit = 1
+    elif time3700 == 0:
+        print("WARNING: potentially mangled bit!\nreturning 0 as default")
+        
     return kimbit
 
 # compute the checksum for the code
@@ -81,7 +100,7 @@ def return_data_from_wav(input_file):
     if len(data.shape) == 2:
            maxsignal1 = data[:,0].max()
            maxsignal2 = data[:,1].max()
-           if maxsignal1 > maxsignal2:
+           if maxsignal1 >= maxsignal2:
                sound = data[:,0]
            else:
                sound = data[:,1]
@@ -101,11 +120,11 @@ def return_data_from_wav(input_file):
     time = np.linspace(0., length, sound.shape[0])
     return sound,maxsignal,minsignal,time,samplerate
 
-def debug_timing(count2400, count3700, kimbit):
-    print("time2400: {:4f}\ttime3700: {:4f}\tbit: {}".format(count2400/(2*2400),count3700/(2*3700),kimbit))
+def debug_timing(count2400, count3700, kimbit, cycleup):
+    print("time: {:.4f}\ttime2400: {:4f}\ttime3700: {:4f}\tbit: {}".format(cycleup,count2400/(2*2400),count3700/(2*3700),kimbit))
 
-def debug_decoding(bytecounter, newbyte, hexbyte):
-    print("byte {}: {}\tparity {}\tbin: {:08b}\thex: {}\tASCII: {}".format(bytecounter, newbyte[:7][::-1], newbyte[7], int(hexbyte,16),hexbyte, chr(int(hexbyte,16))))
+def debug_decoding(bytecounter, newbyte, hexbyte, cycleup):
+    print("time: {:.4f}\tbyte {}: {}\tparity {}\tbin: {:08b}\thex: {}\tASCII: {}".format(cycleup, bytecounter, newbyte[:8][::-1], newbyte[7], int(hexbyte,16),hexbyte, chr(int(hexbyte,16))))
 
 def make_transtable():
     transtable = dict()
@@ -115,21 +134,43 @@ def make_transtable():
         transtable[c] = symbols[i] 
     return transtable
 
-def add_bit(totaltime,bitcounter,newbyte,charstring):
+def add_bit(totaltime,bitcounter, bytecounter, newbyte,charstring,cycleup):
     kimbit = returnbit(count2400, count3700)
     if debug:
-        debug_timing(count2400,count3700,kimbit)
-    totaltime = totaltime + (count2400/(2*2400)) + (count3700/(2*3700))
+        debug_timing(count2400,count3700,kimbit,cycleup)
+    totaltime = totaltime + (count2400/(2400)) + (count3700/(3700))
     bitcounter += 1
     newbyte += str(kimbit)
+    hexbyte='0'
+    oldbyte='0'
     if bitcounter == 8:
         hexbyte = hex(int(newbyte[:7][::-1], 2))
         if debug:
-            debug_decoding(bytecounter,newbyte,hexbyte)
+            debug_decoding(bytecounter,newbyte,hexbyte,cycleup)
         charstring += chr(int(hexbyte,16))
+        oldbyte = newbyte
         newbyte = ''
         bitcounter = 0
-    return totaltime,bitcounter,newbyte,charstring
+        bytecounter += 1
+    return totaltime, bitcounter, bytecounter, newbyte, charstring, oldbyte
+
+def detect_leader(bytecounter, oldbyte, syncounter,bitcounter,newbyte,charstring, goodlock): 
+    if bytecounter == 1 and oldbyte == '01101000' and bitcounter == 0:
+        print("Succesfull lock on SYN char")
+        syncounter += 1
+    elif bytecounter == 1 and len(oldbyte) == 8 and oldbyte != '01101000':
+        print("WARNING: first char is not SYN: {}".format(newbyte))
+        print("trying to get a new lock")
+        bitcounter = 7
+        bytecounter -= 1 
+        newbyte = oldbyte[1:]
+        charstring = charstring[:-1]
+    elif oldbyte == '01101000' and bitcounter == 0:
+        syncounter += 1
+    if syncounter > 98 and hex(int(oldbyte[::-1],2)) == '0x2a':
+        print("succesful lock on leader sequence, found {:d} SYN chars".format(syncounter))
+        goodlock = True
+    return syncounter, bytecounter, bitcounter, newbyte, charstring, goodlock
 
 ####################
 # block arguments and parsing
@@ -161,12 +202,12 @@ if as_prg and as_bin:
 
 # convert wav to soundvector and samplerate
 sound,maxsignal,minsignal,time,samplerate = return_data_from_wav(input_file)
-
 if make_plots:
     plot_specgram(sound,samplerate,output_prg.split('.')[0])
     plot_fft(sound, samplerate, output_prg.split('.')[0])
 
 # initialize a bunch of vars
+
 count2400 = 0
 count3700 = 0
 newbit = 'no'
@@ -174,6 +215,7 @@ totaltime = 0
 firsttime = 0
 lasttime = 0
 bitcounter = 0
+bytecounter = 0 
 newbyte = ''
 charstring = ''
 allshort = list()
@@ -185,82 +227,123 @@ cycledown = 0
 cycleup = -1
 prevhightime = -1
 cycletime = 0
+syncounter = 0
+allmessages = list()
+goodlock = False
 
 # go through every timepoint in sound vector
 for i,x in enumerate(sound):
-    if x > 0.7*maxsignal or x < 0.7*minsignal:
+    if x > 0.5*maxsignal or x < 0.5*minsignal:
         
-        if firsttime == 0:
-            firsttime = time[i]
-        if lasttime < time[i]:
-            lasttime = time[i]
-        if x > 0.7*maxsignal and triggerup == 0:
+        if x > 0.5*maxsignal and triggerup == 0:
             
             cycleup = time[i]
             triggerup = 1
             triggerdown = 0
 
-        if x < 0.7*maxsignal and triggerdown == 0:
+        if x < 0.5*maxsignal and triggerdown == 0:
             cycledown = time[i]
             triggerdown = 1
         
         lastsignal = x
+
         if triggerup == 1 and triggerdown == 1 and cycleup > 0: 
+
+            if firsttime == 0:
+                firsttime = time[i]
+            if lasttime < time[i]:
+                lasttime = time[i]
+
             cycletime = cycleup - prevhightime
             prevhightime = cycleup
             triggerup = 0
             triggerdown = 0
             hertz = (1/cycletime)
-            if hertz > 3200 and newbit == 'yes':
-                if count3700 > 0:
-                    totaltime,bitcounter,newbyte,charstring = add_bit(totaltime,bitcounter,newbyte,charstring)
+
+            if hertz > 3200 and hertz < 4000 and newbit == 'yes':
+                if count3700 > 2 and count2400 > 1:
                     
-                    count3700 = 1
-                    count2400 = 0
+                    totaltime,bitcounter, bytecounter,newbyte,charstring,oldbyte = add_bit(totaltime,bitcounter,bytecounter, newbyte,charstring, cycleup)
+                    syncounter, bytecounter, bitcounter, newbyte, charstring, goodlock = detect_leader(bytecounter, oldbyte, syncounter, bitcounter, newbyte, charstring, goodlock)
+                    if bitcounter == 0:
+                        oldbyte = ''
+                    if make_plots:
+                        if syncounter == 1 and bitcounter == 0:
+                            offset = 9*((count2400/(2400)) + (count3700/(3700)))
+                            title = 'Start first SYN'
+                            plot_start(cycleup-offset,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
+                        if goodlock and len(charstring) == 101 and bitcounter == 0:
+                            title='At the start of the message'
+                            plot_start(cycleup,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
+                        
+  
+                elif count3700 > 3 or count2400 > 2:
+                    print("WARNING: possible mangled/skipped bit at time {:.3f}".format(cycleup))
+                    if debug:
+                        plot_start(cycleup-0.025,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup))
+                    if goodlock:
+                        allmessages.append(charstring)
+                    syncounter, bytecounter, bitcounter, newbyte, charstring,goodlock = 0,0,0,'','',False
+                    
+                    
+                count3700 = 1
+                count2400 = 0
                     
                 newbit = 'no'
                 count3700 += 1
                 allshort.append(hertz)
-            elif hertz > 3200:
+            elif hertz > 3200 and hertz < 4000:
                 count3700 += 1
                 allshort.append(hertz)
-            if hertz <= 2600:
+            elif hertz <= 2600 and hertz >2100:
                 newbit = 'yes'
                 count2400 += 1
                 alllong.append(hertz)
-    
         prevhighlowtime = time[i]
 
 # finish the last one
-totaltime,bitcounter,newbyte,charstring = add_bit(totaltime,bitcounter,newbyte,charstring)
+totaltime,bitcounter, bytecounter, newbyte, charstring,hexbyte = add_bit(totaltime,bitcounter, bytecounter,newbyte,charstring,cycleup)
 
 # print bytes to screen
 transtable = make_transtable()
+if goodlock:
+    allmessages.append(charstring)
 
-print('\nbytes in the .wav file:\n----------------------------')
-for i in range(0,len(charstring),20):
-    print("{:4d}\t".format(i),end='')
-    partstring = charstring[i:i+20]
-    for c in partstring:
-        print(transtable[c],end='')
-    print()
-print('----------------------------')
+width = 60
+header = create_header(width)
 
-# get message from bytes
-message = charstring.split('*')[1]
-message = message[2:].split('/')[0]
+print("Number of messages found: {:d}".format(len(allmessages)))
+for m,charstring in enumerate(allmessages):
+    print('\nbytes in the .wav file:\n'+header)
+    for i in range(0,len(charstring),width):
+        print("{:4d}\t".format(i),end='')
+        partstring = charstring[i:i+width]
+        for c in partstring:
+            print(transtable[c],end='')
+        print()
+    print(header.replace('|','-'))
 
-# write binary
-computed_checksum,message_bytearray = compute_chsum(message)
-outbytearrayfh = open(output_prg,'wb')
+    # get message from bytes
+    message = charstring.split('*')[1]
+    message = message[2:].split('/')[0]
 
-if as_bin:
-    outbytearrayfh.write(message_bytearray[2:])
-elif as_prg:
-    outbytearrayfh.write(message_bytearray)
-else:
-    print("WARNING: no output generated, specify format")
-outbytearrayfh.close()
+    # write binary
+    if len(allmessages) > 1:
+        output_file = output_prg + '_{:d}'.format(m)
+    else:
+        output_file = output_prg
+        
+    computed_checksum,message_bytearray = compute_chsum(message)
+    outbytearrayfh = open(output_file,'wb')
+
+    if as_bin:
+        outbytearrayfh.write(message_bytearray[2:])
+    elif as_prg:
+        outbytearrayfh.write(message_bytearray)
+    else:
+        print("WARNING: no output generated, specify format")
+    outbytearrayfh.close()
+    print('computed checksum: {}'.format(computed_checksum.upper()))
 
 # print out some information
 print("\n\nfirst signal: {:.2f}\nlast signal: {:.2f}".format(firsttime, lasttime))
@@ -269,6 +352,3 @@ print("totaltime, estimated from waves: {:.2f}".format(totaltime))
 
 print("short pulses, estmate of hz: {:.2f}".format(np.mean(np.array(allshort))))
 print("long pulses, estmate of hz: {:.2f}".format(np.mean(np.array(alllong))))
-print('computed checksum: {}'.format(computed_checksum.upper()))
-if make_plots:
-   plot_start(firsttime,time,sound,output_prg.split('.')[0])
