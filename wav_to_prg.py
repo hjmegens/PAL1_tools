@@ -27,7 +27,7 @@ def plot_fft(sound, sampling_freq, outfilestub):
     plt.plot(freq[freq<4500], fft_spectrum_abs[freq<4500])
     plt.xlabel("frequency, Hz")
     plt.ylabel("Amplitude, units")
-    plt.ylim(0,1.1*fft_spectrum_abs.max())
+    plt.ylim(0,1.1*fft_spectrum_abs[freq>1000].max())
     plt.xlim(1000,4500)
     plt.savefig(outfilestub + '_fft.png')
 
