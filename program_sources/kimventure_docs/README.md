@@ -58,6 +58,12 @@ diff VENTUREPPT100.TXT kimventure.ptp_1
 ```
 In the 2nd code block, this specifically pertains the stack space, indicated by a manually inserted '|' at location 1FF. My guess is that for creating the commercial audio tape, the code was loaded into a KIM-1 by papertape (or manually punched in?), and subsequently recorded on a master audio tape from there, thereby including what was in the stack at the time. 
 
+The most important difference here may be the one indicated by a '\*' inserted manually here. In the pdf of the manual, the location 0x28F
+
+<img src="https://github.com/hjmegens/PAL1_tools/blob/main/program_sources/kimventure_docs/misc_figures/Difference_at_0x28F.png?raw=true" alt="fig1" style="width: 400px;"/>
+
+It seems here the audio tape may be correct (?) - the PDF is really ambigious but tentatively a '0' seems more likely than a 'C'. 
+
 <img src="https://github.com/hjmegens/PAL1_tools/blob/main/program_sources/kimventure_docs/misc_figures/Byte_stream3.png?raw=true" alt="fig1" style="width: 600px;"/>
 
 Further small differences in block3
