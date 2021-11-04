@@ -8,6 +8,7 @@ from scipy.io import wavfile
 import numpy as np
 import matplotlib.pyplot as plt
 
+# plot specgram, if --make_plots
 def plot_specgram(signal_data, sampling_frequency,outfilestub):
     # Plot the signal read from wav file
     plt.figure(figsize=(16, 8), dpi=300)
@@ -19,6 +20,7 @@ def plot_specgram(signal_data, sampling_frequency,outfilestub):
     plt.ylabel('Frequency')
     plt.savefig(outfilestub + '_specgram.png')
 
+# plot the FFT, if --make_plots
 def plot_fft(sound, sampling_freq, outfilestub):
     fft_spectrum = np.fft.rfft(sound)
     freq = np.fft.rfftfreq(sound.size, d=1./sampling_freq)
@@ -31,13 +33,15 @@ def plot_fft(sound, sampling_freq, outfilestub):
     plt.xlim(1000,4500)
     plt.savefig(outfilestub + '_fft.png')
 
+# output some diagnostic plot of the waveform
 def plot_start(starttime,time,sound,outfilestub,title):
-    newvec = (time>starttime) & (time<(starttime+0.05))
+    newvec = (time>starttime) & (time<(starttime+0.02))
     plt.figure(figsize=(16, 5), dpi=300)
     plt.plot(time[newvec], sound[newvec])
     plt.title(title)
-    plt.savefig(outfilestub + '_start_waves.png')
+    plt.savefig(outfilestub + '_start_waves_short.png')
 
+# for printed output of the content of the wav
 def create_header(width):
     header = ''
     for i in range(width):
@@ -50,15 +54,23 @@ def create_header(width):
     header = '    \t' + header
     return header
 
-def returnbit(count2400,count3700):
+# return a bit based on frequency counts
+def returnbit(count2400,count3700,ishyper):
     kimbit = 0
     time2400 = count2400/2400
     time3700 = count3700/3700
+    # note: had to add this because for hypertape high-freq counts may 
+    # be underestimated, this is something that needs further attention!
+    if ishyper and (count2400 == 1 or count3700 == 1):
+        time3700 *= 2
+    # compute ratio; should be 2 if binary 1; a bit more permissive, this 
+    # is a critical parameter
     if time3700 > 0 and (time2400/time3700 > 1.5):
         kimbit = 1
+    # this can't be zero; warning nevertheless.
     elif time3700 == 0:
         print("WARNING: potentially mangled bit!\nreturning 0 as default")
-        
+    # return single bit
     return kimbit
 
 # compute the checksum for the code
@@ -85,12 +97,12 @@ def compute_chsum(message):
             numchar2 = '{:04b}'.format(numchar2)
 
         totnumchar = numchar1 + numchar2
-        #print(message[i], message[i+1], totnumchar)
         chsum += int(totnumchar,2)
         message_bytearray.append(int(totnumchar,2))
 
     return '{:04x}'.format(chsum),message_bytearray
 
+# return data vector and sample rate from wav
 def return_data_from_wav(input_file):
 
     wav = wavfile.read(input_file)
@@ -120,12 +132,15 @@ def return_data_from_wav(input_file):
     time = np.linspace(0., length, sound.shape[0])
     return sound,maxsignal,minsignal,time,samplerate
 
+# only if debug, print stuff
 def debug_timing(count2400, count3700, kimbit, cycleup):
     print("time: {:.4f}\ttime2400: {:4f}\ttime3700: {:4f}\tbit: {}".format(cycleup,count2400/(2*2400),count3700/(2*3700),kimbit))
 
+# only if debug, print stuff
 def debug_decoding(bytecounter, newbyte, hexbyte, cycleup):
     print("time: {:.4f}\tbyte {}: {}\tparity {}\tbin: {:08b}\thex: {}\tASCII: {}".format(cycleup, bytecounter, newbyte[:8][::-1], newbyte[7], int(hexbyte,16),hexbyte, chr(int(hexbyte,16))))
 
+# make translation table for pretty printing
 def make_transtable():
     transtable = dict()
     chars = '*0123456789ABCDEF/' + chr(0x16) + chr(0x4)
@@ -134,8 +149,9 @@ def make_transtable():
         transtable[c] = symbols[i] 
     return transtable
 
-def add_bit(totaltime,bitcounter, bytecounter, newbyte,charstring,cycleup):
-    kimbit = returnbit(count2400, count3700)
+# if new bit read, add it
+def add_bit(totaltime,bitcounter, bytecounter, newbyte,charstring,cycleup,count2400, count3700, ishyper):
+    kimbit = returnbit(count2400, count3700,ishyper)
     if debug:
         debug_timing(count2400,count3700,kimbit,cycleup)
     totaltime = totaltime + (count2400/(2400)) + (count3700/(3700))
@@ -154,6 +170,7 @@ def add_bit(totaltime,bitcounter, bytecounter, newbyte,charstring,cycleup):
         bytecounter += 1
     return totaltime, bitcounter, bytecounter, newbyte, charstring, oldbyte
 
+# detect leader sequence of SYN chars
 def detect_leader(bytecounter, oldbyte, syncounter,bitcounter,newbyte,charstring, goodlock): 
     if bytecounter == 1 and oldbyte == '01101000' and bitcounter == 0:
         print("Succesfull lock on SYN char")
@@ -167,7 +184,7 @@ def detect_leader(bytecounter, oldbyte, syncounter,bitcounter,newbyte,charstring
         charstring = charstring[:-1]
     elif oldbyte == '01101000' and bitcounter == 0:
         syncounter += 1
-    if syncounter > 98 and hex(int(oldbyte[::-1],2)) == '0x2a':
+    if syncounter > 15 and hex(int(oldbyte[::-1],2)) == '0x2a':
         print("succesful lock on leader sequence, found {:d} SYN chars".format(syncounter))
         goodlock = True
     return syncounter, bytecounter, bitcounter, newbyte, charstring, goodlock
@@ -181,9 +198,7 @@ parser.add_argument("-d", "--debug", help="debug", action="store_true")
 parser.add_argument("-b", "--as_bin", help="output as BIN", action="store_true")
 parser.add_argument("-p", "--as_prg", help="output as PRG", action="store_true")
 parser.add_argument("-s", "--make_plots", help="output plots", action="store_true")
-
-as_bin = False
-as_prg = False
+parser.add_argument("-f", "--hypertape", help="fast mode: hypertape", action="store_true")
 
 args = parser.parse_args()
 
@@ -193,6 +208,7 @@ debug = args.debug
 as_bin = args.as_bin
 as_prg = args.as_prg
 make_plots = args.make_plots
+hyper = args.hypertape
 
 if as_prg and as_bin:
     print("WARNING! (fatal): you should specify only one type of output format")
@@ -232,8 +248,22 @@ allmessages = list()
 goodlock = False
 lastgoodpeak = 0
 
+min3700 = 2
+min2400 = 1
+minfreq3700 = 3200
+minfreq2400 = 2100
+maxfreq2400 = 2600
+maxfreq3700 = 4000
+if hyper:
+    min3700 = 0
+    min2400 = 0
+    minfreq3700 = 3100
+    maxfreq2400 = 2900
+
 # go through every timepoint in sound vector
 for i,x in enumerate(sound):
+    # for the time being the script uses default trigger levels
+    # note: consider making this dynamic, and/or add hysteresis
     if x > 0.5*maxsignal or x < 0.5*minsignal:
         
         if x > 0.5*maxsignal and triggerup == 0:
@@ -255,59 +285,80 @@ for i,x in enumerate(sound):
             if lasttime < time[i]:
                 lasttime = time[i]
 
+            halfcycletime = cycledown - cycleup
             cycletime = cycleup - prevhightime
             prevhightime = cycleup
             triggerup = 0
             triggerdown = 0
             hertz = (1/cycletime)
-            if hertz > 3200 and hertz < 4000 and newbit == 'yes':
+            if hyper:
+                hertz = (0.5/halfcycletime)
+            if debug:
+                print(hertz)
+            # if within high-freq signal level, and shift from low freq
+            if hertz > minfreq3700 and hertz < maxfreq3700 and newbit == 'yes':
                 betweengoodpeaks = lastgoodpeak - cycleup
                 lastgoodpeak = cycleup
-                if count3700 > 2 and count2400 > 1 and betweengoodpeaks < (3*(1/2400)):
-                    
-                    totaltime,bitcounter, bytecounter,newbyte,charstring,oldbyte = add_bit(totaltime,bitcounter,bytecounter, newbyte,charstring, cycleup)
+                # evaluate if sufficient good signal seen to call bit
+                if count3700 > min3700 and count2400 > min2400 and betweengoodpeaks < (3*(1/2400)):
+
+                    # add bit
+                    totaltime,bitcounter, bytecounter,newbyte,charstring,oldbyte = add_bit(totaltime,bitcounter,bytecounter, newbyte,charstring, cycleup, count2400, count3700,hyper)
+
+                    # problems locking on to SYN character are dealt with here
+                    # resetting counters if necessary to get another try at next bit
                     syncounter, bytecounter, bitcounter, newbyte, charstring, goodlock = detect_leader(bytecounter, oldbyte, syncounter, bitcounter, newbyte, charstring, goodlock)
+                   
                     if bitcounter == 0:
                         oldbyte = ''
+                    # only if --make_plots
                     if make_plots:
                         if syncounter == 1 and bitcounter == 0:
                             offset = 9*((count2400/(2400)) + (count3700/(3700)))
                             title = 'Start first SYN'
                             plot_start(cycleup-offset,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
+                        # plot the start of the sequence for diagnostic purposes
                         if goodlock and len(charstring) == 101 and bitcounter == 0:
                             title='At the start of the message'
                             plot_start(cycleup,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
                         
-  
-                elif (count3700 > 3 or count2400 > 2) or betweengoodpeaks > (3*(1/2400)) :
+                # if not meeting proper criteria, warn for possible problems
+                else:
                     print("WARNING: possible mangled/skipped bit at time {:.3f} \nor larger gap in message.".format(cycleup))
                     if debug:
                         title = 'Possible mangled/skipped bit'
-                        plot_start(cycleup-0.025,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
+                        offset = 9*((count2400/(2400)) + (count3700/(3700)))
+                        plot_start(cycleup-offset,time,sound,output_prg.split('.')[0]+'{:.4f}'.format(cycleup),title)
                     if goodlock:
                         allmessages.append(charstring)
                     syncounter, bytecounter, bitcounter, newbyte, charstring,goodlock = 0,0,0,'','',False
                     
-                    
+                # re-initialize counts    
                 count3700 = 1
                 count2400 = 0
-                    
+
+                # re-initialize variable that keeps track of shifting from high to low freq
                 newbit = 'no'
-                count3700 += 1
+                
+                # keep track of frequency in the high-pitch class  
                 allshort.append(hertz)
-            elif hertz > 3200 and hertz < 4000:
+
+            # if high frequency but no shift to low freq detected prior, just countup
+            elif hertz > minfreq3700 and hertz < maxfreq3700:
                 lastgoodpeak = cycleup
                 count3700 += 1
                 allshort.append(hertz)
-            elif hertz <= 2600 and hertz >2100:
+            # if low frequency, countup, and detect shift to low freq
+            elif hertz <= maxfreq2400 and hertz > minfreq2400:
                 lastgoodpeak = cycleup
                 newbit = 'yes'
                 count2400 += 1
                 alllong.append(hertz)
+
         prevhighlowtime = time[i]
 
 # finish the last one
-totaltime,bitcounter, bytecounter, newbyte, charstring,hexbyte = add_bit(totaltime,bitcounter, bytecounter,newbyte,charstring,cycleup)
+totaltime,bitcounter, bytecounter, newbyte, charstring,hexbyte = add_bit(totaltime,bitcounter, bytecounter,newbyte,charstring,cycleup,count2400,count3700,hyper)
 
 # print bytes to screen
 transtable = make_transtable()
