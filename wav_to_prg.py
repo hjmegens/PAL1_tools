@@ -61,6 +61,7 @@ def returnbit(count2400,count3700,ishyper):
     time3700 = count3700/3700
     # note: had to add this because for hypertape high-freq counts may 
     # be underestimated, this is something that needs further attention!
+    #print(count2400,count3700)
     if ishyper and (count2400 == 1 or count3700 == 1):
         time3700 *= 2
     # compute ratio; should be 2 if binary 1; a bit more permissive, this 
@@ -109,6 +110,10 @@ def return_data_from_wav(input_file):
     samplerate = wav[0]
     data = wav[1]
     sound = ''
+    # assuming mono, if stereo deciding which channel
+    # note: there is a potential weakness; if mute channel
+    # has still lots of noise it could be inadvertently selected
+    # this needs some work to make full-proof. 
     if len(data.shape) == 2:
            maxsignal1 = data[:,0].max()
            maxsignal2 = data[:,1].max()
@@ -264,15 +269,16 @@ if hyper:
 for i,x in enumerate(sound):
     # for the time being the script uses default trigger levels
     # note: consider making this dynamic, and/or add hysteresis
-    if x > 0.5*maxsignal or x < 0.5*minsignal:
+    triggerlevel = 0.5
+    if x > triggerlevel * maxsignal or x < triggerlevel * minsignal:
         
-        if x > 0.5*maxsignal and triggerup == 0:
+        if x > triggerlevel * maxsignal and triggerup == 0:
             
             cycleup = time[i]
             triggerup = 1
             triggerdown = 0
 
-        if x < 0.5*maxsignal and triggerdown == 0:
+        if x < triggerlevel * maxsignal and triggerdown == 0:
             cycledown = time[i]
             triggerdown = 1
         
@@ -358,6 +364,9 @@ for i,x in enumerate(sound):
         prevhighlowtime = time[i]
 
 # finish the last one
+# note: for now there's a bug because the last cycle in the 2400 hz frame
+# isn't counted. Since the last bit is supposed to be 0 anyway, there is 
+# no consequence. But in a next version this needs to be addressed. 
 totaltime,bitcounter, bytecounter, newbyte, charstring,hexbyte = add_bit(totaltime,bitcounter, bytecounter,newbyte,charstring,cycleup,count2400,count3700,hyper)
 
 # print bytes to screen
@@ -375,7 +384,10 @@ for m,charstring in enumerate(allmessages):
         print("{:4d}\t".format(i),end='')
         partstring = charstring[i:i+width]
         for c in partstring:
-            print(transtable[c],end='')
+            if c in transtable.keys():
+                print(transtable[c],end='')
+            else:
+                print('.')
         print()
     print(header.replace('|','-'))
 
