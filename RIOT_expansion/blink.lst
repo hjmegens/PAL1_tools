@@ -1,0 +1,72 @@
+F00:0001       ; blink.s - blink 8 LEDs on PAL-1's expansion 6532 RIOT
+F00:0002       
+F00:0003         .org $200         ; start at 0x200
+F00:0004         lda #$FF          
+               S01:00000200:  A9 FF
+F00:0005         sta $1701         ; set A data register to output
+               S01:00000202:  8D 01 17
+F00:0006       loop: 
+F00:0007         lda #$55
+               S01:00000205:  A9 55
+F00:0008         sta $1700         ; output 01010101 on A data register
+               S01:00000207:  8D 00 17
+F00:0009         jsr sec           ; wait 1 sec
+               S01:0000020A:  20 18 02
+F00:0010         lda #$AA          
+               S01:0000020D:  A9 AA
+F00:0011         sta $1700         ; output 10101010 on A data register
+               S01:0000020F:  8D 00 17
+F00:0012         jsr sec           ; wait 1 sec
+               S01:00000212:  20 18 02
+F00:0013         jmp loop          ; and back to loop
+               S01:00000215:  4C 05 02
+F00:0014       
+F00:0015       ; subroutine to wait one second 
+F00:0016       sec:
+F00:0017         lda #$9C          ; count back from 156
+               S01:00000218:  A9 9C
+F00:0018         sta $1706         ; through RIOT interval timer
+               S01:0000021A:  8D 06 17
+F00:0019         lda #0
+               S01:0000021D:  A9 00
+F00:0020         sta $0            ; initialize extra counter
+               S01:0000021F:  85 00
+F00:0021       clk:
+F00:0022         lda $1707         ; get timer status
+               S01:00000221:  AD 07 17
+F00:0023         beq clk           ; check if counted back to 0 yet
+               S01:00000224:  F0 FB
+F00:0024         lda #$9C       
+               S01:00000226:  A9 9C
+F00:0025         sta $1706         ; re-initialize RIOT 64 counter register
+               S01:00000228:  8D 06 17
+F00:0026         inc 0             ; increase extra counter by 1
+               S01:0000022B:  E6 00
+F00:0027         lda 0              
+               S01:0000022D:  A5 00
+F00:0028         cmp #$64          ; extra counter already 100?
+               S01:0000022F:  C9 64
+F00:0029         bne clk           ; if not, extra interval timer cycle
+               S01:00000231:  D0 EE
+F00:0030         rts               ; return from subroutine
+               S01:00000233:  60
+F00:0031       
+
+
+Sections:
+S01  seg200
+
+
+Sources:
+F00  blink.s
+
+
+Symbols:
+clk EXPR(545=0x221) ABS 
+sec EXPR(536=0x218) ABS 
+loop EXPR(517=0x205) ABS 
+__RPTCNT EXPR(-1=0xffff) INTERNAL 
+__VASM EXPR(0=0x0) INTERNAL 
+__UNIXFS EXPR(0=0x0) INTERNAL 
+
+There have been no errors.
